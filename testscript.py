@@ -70,7 +70,7 @@ def align(ship, target_vec, stop_rotation = False, strength = 1):
 #    var.set(out)
 #    label.update_idletasks()
 
-def update(var, label, stop_event):
+def update(var, stop_event):
   print "thread started"
   global connection
   while not connection:
@@ -79,6 +79,8 @@ def update(var, label, stop_event):
     if not connect():
       time.sleep(3)
       print "."
+      continue
+    print "connected!"
     while connection:
       ship = connection.space_center.active_vessel
       transd = connection.space_center.transform_direction
@@ -93,10 +95,10 @@ def update(var, label, stop_event):
       out += "error:   %10.3f\n" % error
       out += "av_mag:  %10.3f\n" % av_mag
       out += "forward: %10.3f %10.3f %10.3f\n" % ship.avionics.forward
-      var.set(out)
       if stop_event.isSet():
         connection._connection.close()
         exit()
+      var.set(out)
 
 
 

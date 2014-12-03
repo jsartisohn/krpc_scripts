@@ -16,31 +16,31 @@ def reload_script():
   threading.Thread(target=reload_thread).start()
 
 import testscript
-script_thread = None
+script = None
 def reload_thread():
-  global script_thread
-  if script_thread:
+  global script
+  global stop_event
+  if script:
     print "joining thread"
-    script_thread.join()
+    script.join()
   reload(testscript)
   print "starting thread"
-  script_thread = threading.Thread(target=testscript.update,
-                                   args=(var, label, stop_event))
-  global stop_event
+  script = threading.Thread(target=testscript.update, args=(var, stop_event))
   stop_event.clear()
-  script_thread.start()
+  script.start()
 
 tk = Tk()
 tk.title("Avionics")
 tk.geometry("1200x250+2180+750")
 app = Frame(tk)
-app.grid()
+app.grid(sticky=W)
 button = Button(app, text="reload", command=reload_script, font=("Liberation Mono", 10))
-button.grid()
+button.grid(sticky=W)
 var = StringVar()
 var.set("")
-label = Label(app, textvariable = var, font=("Liberation Mono", 10))
-label.grid()
+label = Label(app, textvariable = var, font=("Liberation Mono", 10),
+              justify=LEFT)
+label.grid(sticky=W)
 
 
 
@@ -78,5 +78,5 @@ def update():
 reload_script()
 tk.mainloop()
 stop_event.set()
-if script_thread:
-  script_thread.join()
+if script:
+  script.join()
