@@ -6,42 +6,86 @@ import math
 import numpy as np
 import threading
 import operator
-from Tkinter import *
+#from Tkinter import *
+import Tkinter as Tk
+
+import matplotlib
+matplotlib.use('TkAgg')
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import NavigationToolbar2TkAgg
+from matplotlib.backend_bases import key_press_handler
 
 
-stop_event = threading.Event()
+
+restart_event = threading.Event()
+restart_event.clear()
+error_event = threading.Event()
+error_event.clear()
+terminate = False
 def reload_script():
-  global stop_event
-  stop_event.set()
-  threading.Thread(target=reload_thread).start()
+  global restart_event
+  global script
+  restart_event.set()
+  error_event.clear()
+  if not script:
+    threading.Thread(target=reload_thread).start()
 
-import testscript
+f = Figure(figsize=(9,4), dpi=100)
+
+import sp1
 script = None
 def reload_thread():
   global script
-  global stop_event
-  if script:
-    print "joining thread"
+  global restart_event
+  global terminate
+  while not terminate and not error_event.isSet():
+    reload(sp1)
+    restart_event.clear()
+    script = threading.Thread(target=sp1.update, args=(var, restart_event, error_event, f))
+    print "starting thread"
+    script.start()
     script.join()
-  reload(testscript)
-  print "starting thread"
-  script = threading.Thread(target=testscript.update, args=(var, stop_event))
-  stop_event.clear()
-  script.start()
+    print "finishing thread"
+  script = None
 
-tk = Tk()
+
+
+
+tk = Tk.Tk()
 tk.title("Avionics")
-tk.geometry("1200x250+2180+750")
-app = Frame(tk)
-app.grid(sticky=W)
-button = Button(app, text="reload", command=reload_script, font=("Liberation Mono", 10))
-button.grid(sticky=W)
-var = StringVar()
+#tk.geometry("1200x250+2180+750")
+tk.geometry("1200x450+2180+550")
+app = Tk.Frame(tk)
+app.grid(sticky=Tk.W)
+button = Tk.Button(app, text="reload", command=reload_script, font=("Liberation Mono", 10))
+button.grid(sticky=Tk.W)
+var = Tk.StringVar()
 var.set("")
-label = Label(app, textvariable = var, font=("Liberation Mono", 10),
-              justify=LEFT)
-label.grid(sticky=W)
+label = Tk.Label(app, textvariable = var, font=("Liberation Mono", 10),
+              justify=Tk.LEFT)
+label.grid(sticky=Tk.W)
 
+
+canvasframe = Tk.Frame(tk)
+canvasframe.grid(sticky=Tk.E, column=1, row=0)
+
+
+canvas = FigureCanvasTkAgg(f, master=canvasframe)
+canvas.show()
+canvas.get_tk_widget().pack(side=Tk.TOP, fill=Tk.BOTH, expand=1)
+
+toolbar = NavigationToolbar2TkAgg( canvas, canvasframe )
+toolbar.update()
+canvas._tkcanvas.pack(side=Tk.TOP, fill=Tk.BOTH, expand=1)
+
+def on_key_event(event):
+    print('you pressed %s'%event.key)
+    key_press_handler(event, canvas, toolbar)
+
+canvas.mpl_connect('key_press_event', on_key_event)
+#plt.ion()
+#plt.show()
 
 
 def align(ship, target_vec, stop_rotation = False, strength = 1):
@@ -77,6 +121,6 @@ def update():
 
 reload_script()
 tk.mainloop()
-stop_event.set()
-if script:
-  script.join()
+print "terminating"
+terminate = True
+restart_event.set()

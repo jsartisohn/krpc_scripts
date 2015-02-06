@@ -90,11 +90,11 @@ def update(var, stop_event):
       sun = connection.space_center.bodies['Sun']
       moho = connection.space_center.bodies['Moho']
 
-      error, av_mag = align(ship, ship.avionics.surface_velocity, True)
-      out = ""
-      out += "error:   %10.3f\n" % error
-      out += "av_mag:  %10.3f\n" % av_mag
-      out += "forward: %10.3f %10.3f %10.3f\n" % ship.avionics.forward
+      #error, av_mag = align(ship, ship.avionics.surface_velocity, True)
+      #out = ""
+      #out += "error:   %10.3f\n" % error
+      #out += "av_mag:  %10.3f\n" % av_mag
+      #out += "forward: %10.3f %10.3f %10.3f\n" % ship.avionics.forward
       if stop_event.isSet():
         connection._connection.close()
         exit()
