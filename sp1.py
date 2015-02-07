@@ -167,7 +167,7 @@ def update(var, stop_event, error_event, fig):
     sun = connection.raw.bodies['Sun']
     moho = connection.raw.bodies['Moho']
     global debug_vec_0
-    debug_vec_0 = raw.debug_vector
+    #debug_vec_0 = raw.debug_vector
     #debug_vec_0.position = mul(7, ship.transform.up)
     #debug_vec_0.direction = ship.surface_velocity * 10
     #debug_vec_0.direction = (0, 10, 0)
@@ -216,13 +216,12 @@ def update(var, stop_event, error_event, fig):
         'av': last_av,
         'steering': last_steering,
       }
-      debug_vec_0.direction = mul(15, target_vec)
+      #debug_vec_0.direction = mul(15, target_vec)
       error, av, steering = align(ship, target_vec, False, last_frame)
       cur_time = time.time()
       dt = cur_time - last_time
 
-      if (ship.terrain_altitude > 65 or
-          abs(ship.surface_velocity[0]) > 0.1 or
+      if (abs(ship.surface_velocity[0]) > 0.1 or
           abs(ship.surface_velocity[1]) > 0.1 or
           abs(ship.surface_velocity[2]) > 0.1):
 
