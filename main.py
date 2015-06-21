@@ -34,15 +34,16 @@ def reload_script():
 f = Figure(figsize=(9,4), dpi=100)
 
 import sp1
+import mjolnir2
 script = None
 def reload_thread():
   global script
   global restart_event
   global terminate
   while not terminate and not error_event.isSet():
-    reload(sp1)
+    reload(mjolnir2)
     restart_event.clear()
-    script = threading.Thread(target=sp1.update, args=(var, restart_event, error_event, f))
+    script = threading.Thread(target=mjolnir2.update, args=(var, restart_event, error_event, f))
     print "starting thread"
     script.start()
     script.join()
