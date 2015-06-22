@@ -150,7 +150,6 @@ def heading2vector(ship, pitch, yaw,
 
 def align(ship, target_vec, stop_rotation=False, rotation_vec=None, last=None):
   target_vec = norm(target_vec)
-  print rotation_vec
   if rotation_vec is not None:
     rotation_vec = norm(rotation_vec)
 
@@ -189,7 +188,6 @@ def align(ship, target_vec, stop_rotation=False, rotation_vec=None, last=None):
   error_vec = mul(magnitude, error_vec)
   steering_vec = add(error_vec, angular_vec)
 
-  global out
   r_delta = 0
   if (rotation_vec is not None and
       np.arccos(vdot(rotation_vec, target_vec)) > 10 * math.pi / 180):
@@ -207,15 +205,15 @@ def align(ship, target_vec, stop_rotation=False, rotation_vec=None, last=None):
 
 
 
-  debug_vec_0.position = (0, 0, 0)
-  debug_vec_0.direction = norm(rotation_vec)
-  #debug_vec_0.scale = (0, 10, 0)
-  debug_vec_0.scale = 3
-
-  debug_vec_1.position = (0, 0, 0)
-  debug_vec_1.direction = ship.up
-  debug_vec_1.scale = 3
-
+#  debug_vec_0.position = (0, 0, 0)
+#  debug_vec_0.direction = norm(rotation_vec)
+#  #debug_vec_0.scale = (0, 10, 0)
+#  debug_vec_0.scale = 3
+#
+#  debug_vec_1.position = (0, 0, 0)
+#  debug_vec_1.direction = ship.up
+#  debug_vec_1.scale = 3
+#
 #  if rotation_proj is not None:
 #    debug_vec_2.position = (0, 0, 0)
 #    debug_vec_2.direction = rotation_proj
@@ -250,12 +248,10 @@ def roll_up_toward(target_vec):
   set_steering(ship, (0, 0, error))
 
 
-def rotate_side_toward_sun(ship, sun):
+def perpendicular_vector(ship, sun):
   sun_to_earth = sub(sun.position, ship.position)
-  north = heading2vector(ship, 0, 0)
-  target_vec = vcross(norm(sun_to_earth), norm(north))
-  align(ship, target_vec)
-  roll_up_toward(sun)
+  random_other_vector = (sun_to_earth[1], sun_to_earth[2], sun_to_earth[0])
+  return vcross(norm(sun_to_earth), norm(random_other_vector))
 
 
 debug_vec_0 = None
@@ -340,6 +336,7 @@ def update(var, stop_event, error_event, fig):
       'ep': array([0, 0, 0]),
       'ei': array([0, 0, 0]),
       'ed': array([0, 0, 0]),
+      'Tf': 0,
     }
     last = None
 
@@ -362,10 +359,6 @@ def update(var, stop_event, error_event, fig):
       last_error = error
       last_av = av
 
-      rotation_vec = sub(sun.position, ship.position)
-      align(ship, heading2vector(ship, -5, 249), rotation_vec=rotation_vec)
-      var.set(out)
-      continue
       if not launched(ship):
         set_throttle(ship, 1)
         set_sas(ship, False)
@@ -390,7 +383,6 @@ def update(var, stop_event, error_event, fig):
         else:
           last = align(ship, ship.surface_velocity, last=last)
       elif mission_time < 3*60 + 35:
-        out += "Extend antenna!\n"
         stage = proceed_to_stage(ship, 2)
         out += "stage: %s\n" % stage
         last = align(ship, heading2vector(ship, 25, 180), last=last)
@@ -406,15 +398,18 @@ def update(var, stop_event, error_event, fig):
         last = align(ship, heading2vector(ship, -4, 180), last=last)
       elif first_burn_start < 0 and mission_time > 6*60 + 10:
         if ship.orbit.time_to_apoapsis < 60:
-          set_rcs(True)
-          last = align(ship, ship.orbit_velocity, last=last)
+          set_rcs(ship, True)
+          last['Tf'] = 1
+          last = align(ship, ship.orbit_velocity, last=last, stop_rotation=True)
           if mag(last['error']) < 0.01:
             set_throttle(ship, 1)
             first_burn_start = time.time()
         else:
           set_throttle(ship, 0)
           proceed_to_stage(ship, 0)
-          rotate_side_toward_sun(ship, sun)
+          target_vec = perpendicular_vector(ship, sun)
+          rotation_vec = sub(ship.position, sun.position)
+          last = align(ship, target_vec, last=last, rotation_vec=rotation_vec)
       elif first_burn_start > 0 and first_burn_end < 0:
         if ship.orbit.apoapsis_altitude < 1326943:
           last = align(ship, ship.orbit_velocity, last=last)
@@ -423,22 +418,26 @@ def update(var, stop_event, error_event, fig):
           first_burn_end = time.time()
       elif second_burn_start < 0:
         if ship.orbit.time_to_apoapsis < 60:
-          set_rcs(True)
+          set_rcs(ship, True)
           last = align(ship, ship.orbit_velocity, last=last)
           if mag(last['error']) < 0.01:
             set_throttle(ship, 1)
             second_burn_start = time.time()
         else:
-          rotate_side_toward_sun(ship, sun)
+          target_vec = perpendicular_vector(ship, sun)
+          rotation_vec = sub(ship.position, sun.position)
+          last = align(ship, target_vec, last=last, rotation_vec=rotation_vec)
       elif second_burn_start > 0 and second_burn_end < 0:
-        if ship.orbit.apoapsis_altitude < 1326776:
+        if ship.orbit.periapsis_altitude < 1326776 and ship.orbit.periapsis_altitude < 1326776:
           last = align(ship, ship.orbit_velocity, last=last)
         else:
           set_throttle(ship, 0)
-          set_rcs(False)
-          first_burn_end = time.time()
+          set_rcs(ship, False)
+          second_burn_end = time.time()
       else:
-        rotate_side_toward_sun(ship, sun)
+          target_vec = perpendicular_vector(ship, sun)
+          rotation_vec = sub(ship.position, sun.position)
+          last = align(ship, target_vec, last=last, rotation_vec=rotation_vec)
 
 
         #last = align(ship, heading2vector(ship, 0, 180), last=last)
@@ -446,7 +445,7 @@ def update(var, stop_event, error_event, fig):
       #last = align(ship, heading2vector(ship, 0, 0), True, last=last)
 
 
-      if (True or False and
+      if (False and
           (abs(ship.surface_velocity[0]) > 0.1 or
            abs(ship.surface_velocity[1]) > 0.1 or
            abs(ship.surface_velocity[2]) > 0.1)):
