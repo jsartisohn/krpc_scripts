@@ -1,10 +1,36 @@
 import socket
+from tkinter import Canvas, RIGHT, BOTH
 import krpc
 import math
 import time
 import numpy as np
 from numpy import array
 import matplotlib.pyplot as plt
+from krcc_module import KRCCModule
+
+# DECLARE_KRCC_MODULE
+def load(root):
+  return Mjolnir(root)
+
+
+class Mjolnir(KRCCModule):
+
+  def __init__(self, root):
+    super().__init__()
+    self.canvas = Canvas(root)
+    self.canvas.pack(side=RIGHT, fill=BOTH, expand=True)
+    self.canvas.configure(background='#000000')
+
+  def __del__(self):
+    self.canvas.destroy()
+
+  def run(self):
+    while not self.terminate:
+      pass
+
+  def name(self):
+    return 'Mjolnir'
+
 
 def static_var(varname, value):
   def decorate(func):
@@ -123,10 +149,10 @@ def heading2vector(ship, pitch, yaw,
                    delta_ship_surface_up=1,
                    delta_npole_pos=10):
   if pitch < -90 or pitch > 90:
-    print 'head(): pitch out of bounds'
+    print('head(): pitch out of bounds')
     return
   if yaw < 0 or yaw > 360:
-    print 'head(): yaw out of bounds'
+    print('head(): yaw out of bounds')
     return
 
   h2v = heading2vector
@@ -267,7 +293,7 @@ def update(var, stop_event, error_event, fig):
   global out
   
   
-  print "thread started"
+  print('thread started')
   global figure
   global plot
   figure = fig
@@ -278,12 +304,12 @@ def update(var, stop_event, error_event, fig):
     global connection
     while not connection:
       if stop_event.isSet():
-        print "thread stopped"
+        print('thread stopped')
         exit()
       if not connect():
         time.sleep(3)
-        print "."
-    print "connected!"
+        print('.')
+    print('connected!')
     raw = connection.raw
     ship = raw.active_vessel
     control = ship.control
@@ -300,7 +326,7 @@ def update(var, stop_event, error_event, fig):
     #import inspect
     #from pprint import pprint as pp
     #pp(inspect.getmembers(connection.krpc.get_services))
-    #print connection.krpc.get_services()
+    #print'connection.krpc.get_services(')
     raw.clear_debug_vectors2()
     debug_vec_0 = raw.new_debug_vector()
     debug_vec_1 = raw.new_debug_vector()
@@ -317,6 +343,7 @@ def update(var, stop_event, error_event, fig):
     last_av = array([0, 0, 0])
     last_error = array([0, 0, 0])
     last_steering = array([0, 0, 0])
+    stage = ship.current_stage
 
     values = {
       'time': [],
@@ -351,7 +378,7 @@ def update(var, stop_event, error_event, fig):
       out = ""
       if stop_event.isSet():
         connection._connection.close()
-        print "thread stopped"
+        print('thread stopped')
         exit()
       start = time.time()
 
@@ -371,20 +398,19 @@ def update(var, stop_event, error_event, fig):
 
       mission_time = time.time() - mission_start
       out += "mission_time: %8.3f\n" % mission_time
+      out += "stage: %s\n" % stage
       if mission_time < 4:
         out += "Leaving launch pad.\n"
       elif mission_time < 65:
         last = align(ship, heading2vector(ship, 87, 190), last=last)
       elif mission_time < 3*60 + 00:
         proceed_to_stage(ship, 3)
-        out += "Arm parachutes!\n"
         if ship.orbit.inclination > 89.8 * math.pi / 180:
           last = align(ship, heading2vector(ship, 35, 180), last=last)
         else:
           last = align(ship, ship.surface_velocity, last=last)
       elif mission_time < 3*60 + 35:
         stage = proceed_to_stage(ship, 2)
-        out += "stage: %s\n" % stage
         last = align(ship, heading2vector(ship, 25, 180), last=last)
       elif mission_time < 4*60 + 00:
         out += "Extend antenna!\n"
@@ -395,6 +421,8 @@ def update(var, stop_event, error_event, fig):
         last = align(ship, heading2vector(ship, 0, 180), last=last)
       elif mission_time < 6*60 + 30:
         last['Tf'] = 0.5
+        if ship.orbit.apoapsis_altitude > 1310000:
+          set_throttle(ship, 0)
         last = align(ship, heading2vector(ship, -4, 180), last=last)
       elif first_burn_start < 0 and mission_time > 6*60 + 10:
         if ship.orbit.time_to_apoapsis < 60:
@@ -438,11 +466,6 @@ def update(var, stop_event, error_event, fig):
           target_vec = perpendicular_vector(ship, sun)
           rotation_vec = sub(ship.position, sun.position)
           last = align(ship, target_vec, last=last, rotation_vec=rotation_vec)
-
-
-        #last = align(ship, heading2vector(ship, 0, 180), last=last)
-
-      #last = align(ship, heading2vector(ship, 0, 0), True, last=last)
 
 
       if (False and
