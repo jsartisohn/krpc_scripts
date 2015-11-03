@@ -8,7 +8,6 @@ import numpy as np
 from numpy import array
 
 
-# DECLARE_KRCC_MODULE
 from krcc_module import KRCCModule
 
 random.random()

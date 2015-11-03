@@ -8,7 +8,6 @@ from numpy import array
 import matplotlib.pyplot as plt
 from krcc_module import KRCCModule
 
-# DECLARE_KRCC_MODULE
 def load(root):
   return Mjolnir(root)
 

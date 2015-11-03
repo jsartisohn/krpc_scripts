@@ -1,67 +1,10 @@
 import time
-import sys
 import os
-import math
-import numpy as np
 import threading
-import operator
-#import Tkinter as Tk
 import importlib
 from tkinter import *
 from tkinter import ttk
 import tkinter.font
-
-
-import matplotlib
-
-matplotlib.use('TkAgg')
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.backends.backend_tkagg import NavigationToolbar2TkAgg
-from matplotlib.backend_bases import key_press_handler
-
-terminate_event = threading.Event()
-restart_event = threading.Event()
-restart_event.clear()
-error_event = threading.Event()
-error_event.clear()
-terminate = False
-
-
-def reload_script():
-  global restart_event
-  global script
-  restart_event.set()
-  error_event.clear()
-  if not script:
-    threading.Thread(target=reload_thread).start()
-
-
-f = Figure(figsize=(9, 4), dpi=100)
-
-#import sp1
-#import mjolnir2
-#import staedler1
-#import tenacity1
-import tenacity2
-
-script = None
-
-
-def reload_thread():
-  global script
-  global restart_event
-  global terminate
-  #while not terminate and not error_event.isSet():
-  #  importlib.reload(tenacity2)
-  #  restart_event.clear()
-  #  script = threading.Thread(target=tenacity2.update,
-  #                            )#args=(var, restart_event, error_event, f))
-  #  print('starting thread')
-  #  script.start()
-  #  script.join()
-  #  print('finishing thread')
-  script = None
 
 
 KRCC_MODULE_DECLARATION = 'DECLARE_' + 'KRCC' + '_MODULE'
@@ -76,12 +19,128 @@ for dirpath, _, filenames in os.walk(os.getcwd()):
           krcc_modules.append(filename[:-3])
 
 
-def on_combobox_changed(event):
+def on_combobox_changed():
   loader.start_module(combobox.get())
 
 
-def on_button_clicked(event):
+def on_button_clicked():
   loader.reload_module()
+
+
+class KRCCModuleLoader:
+  def __init__(self, root):
+    self._root = root
+    self._lock = threading.Lock()
+    self._py_module = None
+    self._module = None
+    self._module_name = None
+    self._module_thread = None
+    self._shutdown = False
+    self._thread = threading.Thread(target=self._execute_module, name='_thread')
+    self._thread.start()
+    self._file_thread = threading.Thread(target=self._watch_file,
+                                         name='_file_thread')
+    self._file_thread.start()
+
+  def _execute_module(self):
+    error = None
+    while True:
+      try:
+        self._lock.acquire()
+        if self._module_name is None and self._py_module is None:
+          continue
+        if self._py_module is None:
+          self._py_module = importlib.import_module(self._module_name)
+        else:
+          self._py_module = importlib.reload(self._py_module)
+          self._module_name = self._py_module.__name__.split('/')[-1]
+          self._module_name = self._module_name.split('.')[0]
+        self._module = self._py_module.load(self._root)
+        print('\nStarting thread with module: %s' % self._module.name)
+        self._module_thread = threading.Thread(target=self._module.run,
+                                               name='_module_thread')
+        self._module_thread.start()
+        error = None
+        self._lock.release()
+        self._module_thread.join()
+        self._lock.acquire()
+        print('\nModule %s finished executing.' % self._module.name)
+        if self._shutdown:
+          self._module_name = None
+          return
+      except Exception as e:
+        if error != e.args[0]:
+          error = e.args[0]
+          print('\n')
+          print(e)
+          self._module_name = None
+          sys.stdout.write('Retrying')
+        sys.stdout.write('.')
+        sys.stdout.flush()
+        time.sleep(1)
+      finally:
+        self._lock.release()
+
+  def _watch_file(self):
+    watched_file = None
+    while watched_file is None:
+      with self._lock:
+        if self._shutdown:
+          return
+        if self._module_name is not watched_file:
+          watched_file = self._module_name
+      if watched_file is None:
+        continue
+      stats = os.stat(watched_file + '.py')
+      mtime = stats.st_mtime
+      while True:
+        time.sleep(3)
+        new_stats = os.stat(watched_file + '.py')
+        new_mtime = new_stats.st_mtime
+        if new_mtime > mtime:
+          self.reload_module()
+          mtime = new_mtime
+        with self._lock:
+          if self._shutdown:
+            return
+          if self._module_name is None:
+            watched_file = None
+            break
+
+  def shutdown(self):
+    with self._lock:
+      if self._shutdown:
+        return
+      self._shutdown = True
+    self.stop_module()
+    tk.update()
+    while self._thread.isAlive():
+      self._thread.join(0.01)
+      tk.update()
+    while self._file_thread.isAlive():
+      self._file_thread.join(0.01)
+      tk.update()
+
+  def start_module(self, name):
+    with self._lock:
+      if self._shutdown:
+        return
+      if self._module_name is None:
+        self._module_name = name
+
+  def stop_module(self):
+    with self._lock:
+      if self._module_name is not None:
+        self._module.terminate = True
+        self._module_name = None
+
+  def reload_module(self):
+    with self._lock:
+      if self._shutdown:
+        return
+      name = self._module_name
+    self.stop_module()
+    self.start_module(name)
 
 
 tk = Tk()
@@ -94,13 +153,11 @@ for font in tkinter.font.names():
   tkinter.font.nametofont(font).configure(family='Liberation Sans')
 tkinter.font.nametofont('TkFixedFont').configure(family='Liberation Mono')
 
-
 app = ttk.Frame(tk)
 app.pack(side=TOP, fill=X)
 
 button = ttk.Button(app)
 button['text'] = "reload"
-button['command'] = reload_script
 button.pack(side=RIGHT)
 button.bind('<Button-1>', on_button_clicked)
 
@@ -121,97 +178,19 @@ module_frame = ttk.Frame(tk)
 module_frame.pack(fill=BOTH, expand=1)
 
 
-class KRCCModuleLoader:
-  def __init__(self):
-    self.krcc_module = None
-    self.lock = threading.RLock()
-    self.unloading = threading.Lock()
-    self.loading = False
-
-  def _execute_module(self, name):
-    # Wait until unloading is finished.
-    self.unloading.acquire()
-    self.lock.acquire()
-    self.krcc_module = importlib.import_module(name).load(module_frame)
-    self.krcc_module.id = name
-    print('Starting thread with module: %s' % self.krcc_module.name)
-    while self.krcc_module is None or not self.krcc_module.terminate:
-      t = threading.Thread(target=self.krcc_module.run)
-      t.start()
-      # Allow unloading from now on.
-      #if not self.unloading.acquire(False):
-      self.loading = False
-      self.unloading.release()
-      self.lock.release()
-      t.join()
-      print('yolo')
-      self.lock.acquire()
-    print('Module %s finished executing.' % self.krcc_module.name)
-    self.krcc_module = None
-    # Release lock from the actual stop_module() call.
-    self.unloading.release()
-    self.lock.release()
-
-  def stop_module(self):
-    with self.lock:
-      if not self.loading and self.krcc_module is not None:
-        self.unloading.acquire()
-        self.krcc_module.terminate = True
-
-  def start_module(self, name):
-    with self.lock:
-      if self.loading:
-        return False
-      if self.krcc_module is not None and self.krcc_module.id == name:
-        return False
-      self.stop_module()
-      self.loading = True
-      threading.Thread(target=KRCCModuleLoader._execute_module, args=(self, name)).start()
-
-  def reload_module(self):
-    with self.lock:
-      if self.krcc_module is None or self.loading:
-        return
-      self.stop_module()
-      threading.Thread(target=KRCCModuleLoader._reload_module, args=(self, self.krcc_module.id)).start()
-
-  def _reload_module(self, name):
-    with self.unloading:
-      self.start_module(name)
-
-
-loader = KRCCModuleLoader()
+loader = KRCCModuleLoader(module_frame)
 loader.start_module(krcc_modules[0])
+button['command'] = loader.reload_module
 
 
-#var = StringVar()
-#var.set("")
-#label = Label(app, textvariable=var, font=("Liberation Mono", 10),
-#                 justify=LEFT)
-#label.grid(sticky=W)
-#
-#canvas_frame = Frame(tk)
-#canvas_frame.grid(sticky=E, column=1, row=0)
-#
-#canvas = FigureCanvasTkAgg(f, master=canvas_frame)
-#canvas.show()
-#canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
-#
-#toolbar = NavigationToolbar2TkAgg(canvas, canvas_frame)
-#toolbar.update()
-#canvas._tkcanvas.pack(side=TOP, fill=BOTH, expand=1)
+def on_shutdown():
+  loader.shutdown()
+  tk.quit()
 
 
-#def on_key_event(event):
-#  print('you pressed %s' % event.key)
-#  key_press_handler(event, canvas, toolbar)
-#canvas.mpl_connect('key_press_event', on_key_event)
-#import tenacity2
-#tmp = tenacity2.Tenacity2(module)
-#tmp.load()
-#
-reload_script()
-tk.mainloop()
-print('terminating')
-terminate = True
-restart_event.set()
+tk.protocol("WM_DELETE_WINDOW", on_shutdown)
+try:
+  tk.mainloop()
+except KeyboardInterrupt:
+  loader.shutdown()
+print('Shutdown complete! Have a nice day.')
