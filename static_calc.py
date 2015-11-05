@@ -1,127 +1,136 @@
-import logging
-import krpc
-import sys
-import time
-from ttk import Style, Checkbutton
+from tkinter import LEFT, BOTH, IntVar, DoubleVar, \
+  Entry, Label, E, Frame, RIGHT, NW, TOP
+
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, rcParams
+from matplotlib.figure import Figure
+
 from krcc_module import KRCCModule
-from tkinter import Listbox, Y, END, LEFT, Canvas, RIGHT, BOTH, Button, Label, \
-  StringVar
 
 
+# DECLARE_KRCC_MODULE
 def load(root):
   return StaticCalc(root)
+
+
+g = 9.81
 
 
 class StaticCalc(KRCCModule):
   def __init__(self, root):
     super().__init__()
     self.root = root
-    self.vars = []
-    self.enable_logging_checkbox = Checkbutton(root)
-    self.list_string = StringVar()
-    self.listbox = Listbox(root, listvariable=self.list_string,
-                           font='TkFixedFont', width=30)
-    self.canvas = Canvas(root)
-    self.load()
 
-  def __del__(self):
-    self.canvas.destroy()
-    self.listbox.destroy()
+    self.left_frame = Frame(root)
+    self.mass_t0_double = DoubleVar()
+    self.mass_t0_double.set(100)
+    self.mass_t0_double.trace('w', self.plot_values)
+    self.mass_t0_label = Label(self.left_frame, text='mass_t0:')
+    self.mass_t0_label.grid(row=0, column=0, sticky=E)
+    self.mass_t0_entry = Entry(self.left_frame, textvar=self.mass_t0_double)
+    self.mass_t0_entry.grid(row=0, column=1)
 
-  @staticmethod
-  def maybe_open_logfile():
-    return open('yolo.log', 'w+')
-    #return open('{}.log'.format(time.time()), 'w')
+    self.mass_t1_double = DoubleVar()
+    self.mass_t1_double.set(50)
+    self.mass_t1_double.trace('w', self.plot_values)
+    self.mass_t1_label = Label(self.left_frame, text='mass_t1:')
+    self.mass_t1_label.grid(row=1, column=0, sticky=E)
+    self.mass_t1_entry = Entry(self.left_frame, textvar=self.mass_t1_double)
+    self.mass_t1_entry.grid(row=1, column=1)
+
+    self.thrust_int = IntVar()
+    self.thrust_int.set(2000)
+    self.thrust_int.trace('w', self.plot_values)
+    self.thrust_label = Label(self.left_frame, text='thrust:')
+    self.thrust_label.grid(row=2, column=0, sticky=E)
+    self.thrust_entry = Entry(self.left_frame, textvar=self.thrust_int)
+    self.thrust_entry.grid(row=2, column=1)
+
+    self.burn_duration_double = DoubleVar()
+    self.burn_duration_double.set(30)
+    self.burn_duration_double.trace('w', self.plot_values)
+    self.burn_duration_label = Label(self.left_frame, text='burn_duration:')
+    self.burn_duration_label.grid(row=3, column=0, sticky=E)
+    self.burn_duration_entry = Entry(self.left_frame,
+                                     textvar=self.burn_duration_double)
+    self.burn_duration_entry.grid(row=3, column=1)
+
+    self.diameter_double = DoubleVar()
+    self.diameter_double.set(0.3)
+    self.diameter_double.trace('w', self.plot_values)
+    self.diameter_label = Label(self.left_frame, text='Rocket diameter:')
+    self.diameter_label.grid(row=5, column=0, sticky=E)
+    self.diameter_entry = Entry(self.left_frame, textvar=self.diameter_double)
+    self.diameter_entry.grid(row=5, column=1)
+
+    self.left_frame.pack(side=LEFT, anchor=NW)
+
+    self.canvas_frame = Frame(root)
+    self.canvas_frame.pack(side=RIGHT, fill=BOTH, expand=True)
+
+    rcParams['font.family'] = 'Liberation Sans'
+    rcParams['font.size'] = 10
+    rcParams['text.hinting'] = 'native'
+    rcParams['text.hinting_factor'] = 1
+    rcParams['text.antialiased'] = False
+    rcParams['figure.facecolor'] = '#FFFFFF'
+    rcParams['axes.linewidth'] = 0.75
+    rcParams['xtick.major.width'] = 0.75
+    rcParams['xtick.minor.width'] = 0.75
+    rcParams['ytick.major.width'] = 0.75
+    rcParams['ytick.minor.width'] = 0.75
+    figure = Figure(dpi=96)
+    figure.subplots_adjust(left=0.05, right=0.99, top=0.96, bottom=0.06)
+    self.canvas = FigureCanvasTkAgg(figure, master=self.canvas_frame)
+    self.canvas.show()
+    self.canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
+    self.plot = figure.add_subplot(111)
+    # plot.plot(range(-10, 10), [x * x for x in range(-10, 10)])
+    self.plot_values()
 
   def establish_connection_and_run(self):
-    message = None
-    while not self.terminate:
-      try:
-        with krpc.connect(name=self.name) as connection:
-          self.run_with_connection(connection)
-      except (krpc.error.NetworkError, krpc.error.RPCError) as e:
-        if message != e.args[0]:
-          message = e.args[0]
-          print('\n' + message)
-          sys.stdout.write('Reconnecting')
-        sys.stdout.write('.')
-        sys.stdout.flush()
-        time.sleep(1)
+    pass
 
-    #except krpc.error.RPCError as e:
-    #  print('KRPC error: {}. Reconnecting in 3 sec...'.format(e))
-    #  time.sleep(3)
-    logging.debug('KRPC connection closed')
-
-  def run_with_connection(self, connection):
-    logging.debug('KRPC connection established')
-    vessel = connection.space_center.active_vessel
-    ref = vessel.surface_reference_frame
-    flight = connection.add_stream(vessel.flight, ref)
-    floats = [
-        'mean_altitude',
-        'atmosphere_density',
-        'ballistic_coefficient',
-        'drag_coefficient',
-    ]
-    vectors = [
-        'velocity',
-    ]
-    colon_pos_float = max([len(v) for v in floats])
-    colon_pos_vec = max([len(v) + 3 for v in vectors])
-    self.listbox.configure(width=max(colon_pos_float, colon_pos_vec) + 11)
-
-    #while not self.terminate:
-    #  print('Run func... yolo: 1')
-    #  time.sleep(1)
-    #self.terminate = True
-    #return
-    streams = []
-    #for name, func in var:
-    #  print(name)
-    #  print(func)
-    #  streams.append(connection.add_stream(func))
-
-    with self.maybe_open_logfile() as f:
-      # Write the log file header.
-      f.write('time\t' + '\t'.join(floats) + '\t')
-      s = '\t'.join('{{}}[{}]'.format(x) for x in [0, 1, 2])
-      f.write('\t'.join(s.format(*(v for _ in [0, 1, 2])) for v in vectors))
-      f.write('\n')
-      log_sample_interval = 0.01
-      next_log_sample = time.time()
-      fl = flight()
-      while not self.terminate:
-        values = [time.time()]
-        strings = []
-        for name in floats:
-          value = flight().__getattribute__(name)
-          values.append(value)
-          padding = colon_pos_float - len(name) + 9
-          format_string = '{{}}: {{:>{}.3f}}'.format(padding)
-          strings.append(format_string.format(name, value))
-        for name in vectors:
-          value = flight().__getattribute__(name)
-          padding = colon_pos_vec - len(name) + 2
-          format_string = '{{}}[{{}}]: {{:>{}.3f}}'.format(padding)
-          for i in [0, 1, 2]:
-            values.append(value[i])
-            strings.append(format_string.format(name, i, value[i]))
-        if time.time() > next_log_sample:
-          f.write('\t'.join(['{}'.format(v) for v in values]) + '\n')
-          next_log_sample = time.time() + log_sample_interval
-        self.list_string.set(tuple(strings))
+  def plot_values(self, _=None, __=None, ___=None):
+    if _ is None and __ is None and ___ is None:
+      pass
+    time = []
+    acceleration = []
+    velocity = []
+    distance = []
+    mass = []
+    thrust = self.thrust_int.get()
+    dry_mass = self.mass_t0_double.get()
+    fuel_mass = self.mass_t0_double.get() - self.mass_t1_double.get()
+    burn_duration = self.burn_duration_double.get()
+    if fuel_mass >= dry_mass or burn_duration <= 0:
+      return
+    for t in range(5 * 60):
+      time.append(t)
+      fuel_consumed = min(1, t / burn_duration)
+      thrust_accel = thrust / (mass[t - 1] if mass else dry_mass)
+      drag_accel = 0
+      accel_sum = drag_accel - g + (thrust_accel if fuel_consumed < 1 else 0)
+      acceleration.append(accel_sum)
+      velocity.append((velocity[t - 1] if velocity else 0) + acceleration[t])
+      last_distance = distance[-1] if distance else 0
+      dist = last_distance + (velocity[t] + velocity[t - 1]) / 2
+      distance.append(max(0, dist))
+      mass.append(dry_mass - fuel_consumed * fuel_mass)
+    self.plot.clear()
+    self.plot.plot(time, distance)
+    self.canvas.draw()
 
   def run(self):
-    self.establish_connection_and_run()
-    self.enable_logging_checkbox.destroy()
-    self.listbox.destroy()
-    self.canvas.destroy()
+    try:
+      while not self.terminate:
+        pass
+    except RuntimeError:
+      # Should only happen when KeyboardInterrupt is thrown in the MainThread.
+      pass
+    finally:
+      for child in self.root.winfo_children():
+        child.destroy()
 
   @property
   def name(self):
     return 'Static Calc'
-
-  def load(self):
-    self.listbox.pack(side=LEFT, fill=BOTH)
-    self.enable_logging_checkbox.pack(side=LEFT)

@@ -44,6 +44,7 @@ class KRCCModuleLoader:
 
   def _execute_module(self):
     error = None
+    dots = 0
     while True:
       try:
         self._lock.acquire()
@@ -75,7 +76,11 @@ class KRCCModuleLoader:
           print(e)
           self._module_name = None
           sys.stdout.write('Retrying')
+        if dots > 80:
+          dots = 0
+          sys.stdout.write('\n')
         sys.stdout.write('.')
+        dots += 1
         sys.stdout.flush()
         time.sleep(1)
       finally:
