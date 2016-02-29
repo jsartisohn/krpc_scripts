@@ -1,8 +1,9 @@
 import time
 import os
+import sys
 import threading
 import importlib
-from tkinter import *
+import mttkinter as tkinter
 from tkinter import ttk
 import tkinter.font
 
@@ -148,7 +149,7 @@ class KRCCModuleLoader:
     self.start_module(name)
 
 
-tk = Tk()
+tk = tkinter.Tk()
 tk.title('KRCC')
 tk.geometry('1200x450+2180+550')
 s = ttk.Style()
@@ -159,28 +160,28 @@ for font in tkinter.font.names():
 tkinter.font.nametofont('TkFixedFont').configure(family='Liberation Mono')
 
 app = ttk.Frame(tk)
-app.pack(side=TOP, fill=X)
+app.pack(side=tkinter.TOP, fill=tkinter.X)
 
 button = ttk.Button(app)
 button['text'] = "reload"
-button.pack(side=RIGHT)
+button.pack(side=tkinter.RIGHT)
 button.bind('<Button-1>', on_button_clicked)
 
-should_auto_reload = BooleanVar()
+should_auto_reload = tkinter.BooleanVar()
 should_auto_reload.set(True)
 auto_reload_checkbutton = ttk.Checkbutton(app, var=should_auto_reload)
 auto_reload_checkbutton['text'] = 'Automatically reload'
-auto_reload_checkbutton.pack(side=RIGHT)
+auto_reload_checkbutton.pack(side=tkinter.RIGHT)
 
 combobox = ttk.Combobox(app)
 combobox['state'] = 'readonly'
 combobox['values'] = krcc_modules
 combobox.set(krcc_modules[0])
-combobox.pack(side=RIGHT)
+combobox.pack(side=tkinter.RIGHT)
 combobox.bind('<<ComboboxSelected>>', on_combobox_changed)
 
 module_frame = ttk.Frame(tk)
-module_frame.pack(fill=BOTH, expand=1)
+module_frame.pack(fill=tkinter.BOTH, expand=1)
 
 
 loader = KRCCModuleLoader(module_frame)
