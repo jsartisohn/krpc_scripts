@@ -169,27 +169,28 @@ class AtmosphericAscent(object):
     self.control = self.ship.control
 
   def align(self, target_vec, stop_rotation=False, last=None):
-    current = {
-      'time': time.time(),
-      'error': (0, 0, 0),
-      'delta': (0, 0, 0),
-      'error_sum': (0, 0, 0) if last is None else last['error_sum'],
-      'kp': 1,
-      'kd': 2,
-      'ki': 0.1,
-      'steering': (0, 0, 0),
-    }
     if last is None:
-      return current
+      return {
+        'time': time.time(),
+        'error': (0, 0, 0),
+        'delta': (0, 0, 0),
+        'error_sum': (0, 0, 0),
+        'kp': 1,
+        'kd': 2,
+        'ki': 0.1,
+        'steering': (0, 0, 0),
+      }
+
+    current = dict()
 
     # Potentially adjust constants.
     current['kp'] = last['kp']
     current['kd'] = last['kd']
     current['ki'] = last['ki']
 
-    ship_forward = self.ship.direction(self.surf_ref),
+    ship_forward = self.ship.direction(self.surf_ref)
     ship_right = self.transform_direction((1, 0, 0), self.ship_ref,
-                                          self.surf_ref),
+                                          self.surf_ref)
     ship_up = tuple(vcross(ship_forward, ship_right))
 
     p_delta = sub(target_vec, mul(vdot(ship_forward, target_vec), ship_forward))
@@ -207,7 +208,7 @@ class AtmosphericAscent(object):
 
     current['error'] = mul(current['kp'], (p_angle, y_angle, r_angle))
     current['delta'] = tuple(mul(current['kd'], av))
-    current['error_sum'] = tuple(
+    current['error_sum'] = (0, 0, 0) if 'error_sum' not in current else tuple(
       mul(current['ki'], np.add(current['error_sum'], current['error'])))
     if not stop_rotation:
       current['delta'] = (current['delta'][0], current['delta'][1], 0)
@@ -218,7 +219,6 @@ class AtmosphericAscent(object):
                            float(steering[1]),
                            float(steering[2]))
     return current
-
 
   def update(self, connection):
     self.last = self.align(h2v(0, 0), stop_rotation=True, last=self.last)
