@@ -176,12 +176,12 @@ class AtmosphericAscent(object):
         'delta': (0, 0, 0),
         'error_sum': (0, 0, 0),
         'kp': 1,
-        'kd': 2,
+        'kd': 3,
         'ki': 0.1,
         'steering': (0, 0, 0),
       }
 
-    current = dict()
+    current = last
 
     # Potentially adjust constants.
     current['kp'] = last['kp']
@@ -189,7 +189,8 @@ class AtmosphericAscent(object):
     current['ki'] = last['ki']
 
     ship_forward = self.ship.direction(self.surf_ref)
-    ship_right = self.transform_direction((1, 0, 0), self.ship_ref,
+    ship_right = self.transform_direction((1, 0, 0),
+                                          self.ship_ref,
                                           self.surf_ref)
     ship_up = tuple(vcross(ship_forward, ship_right))
 
@@ -241,9 +242,9 @@ class AtmosphericAscent(object):
                  '%.6f' % steering[0], '%.6f' % steering[1], '%.6f' % steering[2],
                  ]
     if 'steering' in self.last:
-      self.control.pitch = float(self.last['steering'][0])
-      self.control.yaw = float(self.last['steering'][1])
-      self.control.roll = float(self.last['steering'][2])
+      #self.control.pitch = float(self.last['steering'][0])
+      #self.control.yaw = float(self.last['steering'][1])
+      #self.control.roll = float(self.last['steering'][2])
       pass
     return self
     #  self.drag = [delta_time, self.last['steering'], self.last['p_angle'], self.last['y_angle'], self.last['dp_angle'], self.last['dy_angle']]
