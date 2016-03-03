@@ -3,7 +3,7 @@ import os
 import sys
 import threading
 import importlib
-import mttkinter as tkinter
+#import mttkinter as tkinter
 from tkinter import ttk
 import tkinter.font
 
@@ -20,11 +20,11 @@ for dirpath, _, filenames in os.walk(os.getcwd()):
           krcc_modules.append(filename[:-3])
 
 
-def on_combobox_changed():
+def on_combobox_changed(event):
   loader.start_module(combobox.get())
 
 
-def on_button_clicked():
+def on_button_clicked(event):
   loader.reload_module()
 
 
@@ -131,8 +131,11 @@ class KRCCModuleLoader:
     with self._lock:
       if self._shutdown:
         return
-      if self._module_name is None:
+      if self._module_name != name:
         self._module_name = name
+        if self._module is not None:
+          self._module.terminate = True
+          self._py_module = None
 
   def stop_module(self):
     with self._lock:
@@ -146,7 +149,7 @@ class KRCCModuleLoader:
         return
       name = self._module_name
     self.stop_module()
-    self.start_module(name)
+    #self.start_module(name)
 
 
 tk = tkinter.Tk()

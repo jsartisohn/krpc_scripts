@@ -191,9 +191,9 @@ def align(ship, target_vec, stop_rotation=False, rotation_vec=None, last=None):
       'Tf': 1.5,
     }
 
-  ship_up = ship.up
-  ship_right = ship.right
-  ship_forward = ship.forward
+  ship_up = ship.up           # (0, 0, -1)
+  ship_right = ship.right     # (1, 0, 0)
+  ship_forward = ship.forward # (0, 1, 0)
   av = ship.angular_velocity
 
   # swap y and z to conform to [pitch, yaw, roll]

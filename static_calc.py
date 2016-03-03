@@ -1,5 +1,6 @@
 import math
-import mttkinter as tkinter
+import tkinter
+#import mttkinter as tkinter
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, rcParams
 from matplotlib.figure import Figure
