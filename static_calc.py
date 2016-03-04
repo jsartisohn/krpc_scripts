@@ -27,7 +27,7 @@ class StaticCalc(KRCCModule):
 
     self.left_frame = tkinter.Frame(root)
     self.mass_t0_double = tkinter.DoubleVar()
-    self.mass_t0_double.set(263)
+    self.mass_t0_double.set(114.713)
     self.mass_t0_double.trace('w', self.plot_values)
     self.mass_t0_label = tkinter.Label(self.left_frame, text='mass_t0:')
     self.mass_t0_label.grid(row=0, column=0, sticky=tkinter.E)
@@ -36,7 +36,7 @@ class StaticCalc(KRCCModule):
     self.mass_t0_entry.grid(row=0, column=1)
 
     self.mass_t1_double = tkinter.DoubleVar()
-    self.mass_t1_double.set(92)
+    self.mass_t1_double.set(14.997)
     self.mass_t1_double.trace('w', self.plot_values)
     self.mass_t1_label = tkinter.Label(self.left_frame, text='mass_t1:')
     self.mass_t1_label.grid(row=1, column=0, sticky=tkinter.E)
@@ -45,7 +45,7 @@ class StaticCalc(KRCCModule):
     self.mass_t1_entry.grid(row=1, column=1)
 
     self.thrust_int = tkinter.IntVar()
-    self.thrust_int.set(7628)
+    self.thrust_int.set(1334.5)
     self.thrust_int.trace('w', self.plot_values)
     self.thrust_label = tkinter.Label(self.left_frame, text='thrust:')
     self.thrust_label.grid(row=2, column=0, sticky=tkinter.E)
@@ -53,7 +53,7 @@ class StaticCalc(KRCCModule):
     self.thrust_entry.grid(row=2, column=1)
 
     self.burn_duration_double = tkinter.DoubleVar()
-    self.burn_duration_double.set(48)
+    self.burn_duration_double.set(172.7)
     self.burn_duration_double.trace('w', self.plot_values)
     self.burn_duration_label = tkinter.Label(self.left_frame,
                                              text='burn_duration:')
@@ -112,6 +112,8 @@ class StaticCalc(KRCCModule):
       pass
     time = []
     value = []
+    value2 = []
+    value3 = []
     thrust_max = self.thrust_int.get()
     dry_mass = self.mass_t0_double.get()
     fuel_mass = self.mass_t0_double.get() - self.mass_t1_double.get()
@@ -119,27 +121,59 @@ class StaticCalc(KRCCModule):
     v_last = 0
     area = self.diameter_double.get() * self.diameter_double.get() / 2 * math.pi
     altitude_last = 0
+
+
+    alpha = 90/360*2*math.pi
+    h = 0
+    x = 0
+    v = 0
+    D = 0
+    radius_earth = 6371000
+    init = False
+
     if fuel_mass >= dry_mass or burn_duration <= 0 or thrust_max <= 0:
       return
     try:
-      for t in range(5 * 60):
+      for t in range(1 * 60):
         time.append(t)
+
         fuel_consumed = min(1, t / burn_duration)
         m = self.mass(t)
         d = density(altitude_last) * v_last * v_last * 0.27 * area / 2
         thrust = thrust_max if fuel_consumed < 1 else 0
-        a = thrust / m - g
-        v = v_last + a + (d if v_last < 0 else -d) / m
-        altitude = max(0, altitude_last + (v + v_last) / 2)
+        #a = thrust / m - g
+        #v = v_last + a + (d if v_last < 0 else -d) / m
+        #altitude = max(0, altitude_last + (v + v_last) / 2)
 
-        value.append(altitude)
+        T = thrust
+        dx = v * math.cos(alpha)
+        x = x + dx
+        dh = v * math.sin(alpha)
+        h = h + dh
+        dv = (T - d - (m * g - (m * v * v) / (radius_earth + h)) * math.sin(alpha)) / m
+        #dv = (T/m * math.sin(alpha)) - g
+        v = v + dv
+        dalpha = (-1 / v) * (g - v * v / (radius_earth + h)) * math.cos(alpha)
+        #dalpha = math.cos(alpha) * g / v
+        alpha = alpha + dalpha
+        if h > 300 and not init:
+          init = True
+          alpha = 91/360*2*math.pi
 
-        altitude_last = altitude
-        v_last = v
+
+        value.append(alpha/2/math.pi*360)
+        value2.append(h/100 + 100)
+        value3.append(v/2 + 100)
+        #value.append(altitude)
+
+        #altitude_last = altitude
+        #v_last = v
     except Exception as e:
       print(e)
     self.plot.clear()
     self.plot.plot(time, value)
+    self.plot.plot(time, value2)
+    self.plot.plot(time, value3)
     self.canvas.draw()
 
   def run(self):
