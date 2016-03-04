@@ -159,7 +159,6 @@ class AtmosphericAscent(object):
     self.atm = 1
     self.drag = []
     self.last = None
-    self.ap = None
     self.last_time = time.time()
     self.sc = connection.space_center
     self.ship = self.sc.active_vessel
@@ -178,28 +177,15 @@ class AtmosphericAscent(object):
       'kd': 3,
       'ki': 0.1,
       'steering': (0, 0, 0),
-      'x': (0, 0, 0),
-      'y': (0, 0, 0),
-      'z': (0, 0, 0),
-      'ship_up': (0, 0, 0),
-      'ship_forward': (0, 0, 0),
-      'ship_right': (0, 0, 0),
     }
     if last is None:
       return current
-
-    current = last
 
     # Potentially adjust constants.
     current['kp'] = last['kp']
     current['kd'] = last['kd']
     current['ki'] = last['ki']
 
-    #ship_forward = self.ship.direction(self.surf_ref)
-    #ship_right = self.transform_direction((1, 0, 0),
-    #                                      self.ship_ref,
-    #                                      self.surf_ref)
-    #ship_up = tuple(norm(vcross(ship_forward, ship_right)))
     ship_forward = (0, 1, 0)
     ship_right = (1, 0, 0)
     ship_up = (0, 0, -1)
@@ -213,39 +199,6 @@ class AtmosphericAscent(object):
       yaw /= s
 
     p_angle, y_angle, r_angle = (pitch, yaw, 0)
-
-#    x = (1, 0, 0)
-#    y = (0, 0, -1)
-#    z = (0, 1, 0)
-#    self.sc.draw_direction(x, self.surf_ref, (0, 1, 0))
-#    self.sc.draw_direction(y, self.surf_ref, (0, 0, 1))
-#    self.sc.draw_direction(z, self.surf_ref, (1, 0, 0))
-#    self.sc.draw_direction(ship_right, self.surf_ref, (0, 1, 0))
-#    self.sc.draw_direction(ship_up, self.surf_ref, (0, 0, 1))
-#    self.sc.draw_direction(ship_forward, self.surf_ref, (1, 0, 0))
-#    f = math.acos(vdot(y, ship_up)) / math.pi - 0.5
-#    arc = math.acos(vdot(x, ship_forward)) - math.pi / 2
-#
-#    pitch = (ac1 - math.pi / 2) * (ac2 - math.pi / 2)
-#    #pitch = 4 * math.acos(vdot(y, ship_up)) * math.acos(vdot(x, ship_forward)) / math.pi
-#    ac1 = math.acos(vdot(x, ship_right))
-#    ac2 = math.acos(vdot(z, ship_up))
-#    yaw = (ac1 - math.pi / 2) * (ac2 - math.pi / 2)
-#    #yaw = 4 * math.acos(vdot(x, ship_right)) * math.acos(vdot(z, ship_up)) / math.pi
-    #current['error'] = (pitch, yaw, behind)
-
-#    return current
-
-
-#    p_delta = sub(target_vec, mul(vdot(ship_forward, target_vec), ship_forward))
-#    y_delta = sub(target_vec, mul(vdot(ship_up, target_vec), ship_up))
-#    delta = add(p_delta, y_delta)
-#    error_vec = norm(sub(delta, mul(vdot(ship_forward, delta), ship_forward)))
-#    magnitude = np.arccos(vdot(norm(target_vec), ship_forward))
-#    error_vec = mul(magnitude, error_vec)
-#    p_angle = vdot(ship_up, error_vec)
-#    y_angle = vdot(ship_right, error_vec)
-#    r_angle = 0
 
     av = self.ship.angular_velocity(self.surf_ref)
     av = (-av[0], -av[2], av[1])
@@ -265,7 +218,8 @@ class AtmosphericAscent(object):
     return current
 
   def update(self, connection):
-    self.last = self.align(self.transform_direction(h2v(0, 0), self.surf_ref, self.ship_ref), stop_rotation=True, last=self.last)
+    vec = self.transform_direction(h2v(0, 0), self.surf_ref, self.ship_ref)
+    self.last = self.align(vec, stop_rotation=True, last=self.last)
 
     delta_time = [time.time() - self.last_time]
     self.last_time = time.time()
@@ -275,12 +229,6 @@ class AtmosphericAscent(object):
     delta = self.last['delta']
     error_sum = self.last['error_sum']
     steering = self.last['steering']
-    x = self.last['x']
-    y = self.last['y']
-    z = self.last['z']
-    ship_right = self.last['ship_right']
-    ship_up = self.last['ship_up']
-    ship_forward = self.last['ship_forward']
     self.drag = [delta_time,
                  'error:',
                  '%.6f' % error[0], '%.6f' % error[1], '%.6f' % error[2],
