@@ -5,6 +5,10 @@ import tkinter
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, rcParams
 from matplotlib.figure import Figure
 
+import numpy as np
+import matplotlib.pyplot as plt
+
+
 from krcc_module import KRCCModule
 
 
@@ -19,6 +23,35 @@ g = 9.81
 def density(x):
   return -2.686e-24 * pow(x, 5) + 7.626e-19 * pow(x, 4) - 8.422e-14 * pow(x, 3) + 4.535e-9 * pow(x, 2) - 1.188e-4 * x + 1.217
 
+
+class SnaptoCursor(object):
+
+  def __init__(self, ax, x, y):
+    self.ax = ax
+    self.lx = ax.axhline(color='k')  # the horiz line
+    self.ly = ax.axvline(color='k')  # the vert line
+    self.x = x
+    self.y = y
+    # text location in axes coords
+    self.txt = ax.text(0.7, 0.9, '', transform=ax.transAxes)
+
+  def mouse_move(self, event):
+
+    if not event.inaxes:
+      return
+
+    x, y = event.xdata, event.ydata
+
+    indx = np.searchsorted(self.x, [x])[0]
+    x = self.x[indx]
+    y = self.y[indx]
+    # update the line positions
+    self.lx.set_ydata(y)
+    self.ly.set_xdata(x)
+
+    self.txt.set_text('x=%1.2f, y=%1.2f' % (x, y))
+    print('x=%1.2f, y=%1.2f' % (x, y))
+    plt.draw()
 
 class StaticCalc(KRCCModule):
   def __init__(self, root):
@@ -170,6 +203,10 @@ class StaticCalc(KRCCModule):
         #v_last = v
     except Exception as e:
       print(e)
+    cursor_height = SnaptoCursor(self.plot, time, value2)
+    cursor_speed = SnaptoCursor(self.plot, time, value3)
+    plt.connect('motion_notify_event', cursor_height.mouse_move)
+    plt.connect('motion_notify_event', cursor_speed.mouse_move)
     self.plot.clear()
     self.plot.plot(time, value)
     self.plot.plot(time, value2)
