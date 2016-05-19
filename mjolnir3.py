@@ -1,16 +1,34 @@
-import io
 import logging
 import sys
 import time
 import traceback
 from tkinter import Listbox, LEFT, BOTH, StringVar
-
 import krpc
-
 from krcc_module import KRCCModule
 from mjolnir2 import align, rotation_matrix, mul, vdot
 import math
 import numpy as np
+from pprint import pprint
+
+
+def execute(state, connection: krpc.Connection):
+  if state is None:
+    state = {
+      'ut': connection.add_stream(getattr, connection.space_center, 'ut'),
+      'next_heartbeat': 0,
+    }
+    print('=' * 80)
+    print('=' * 80)
+    print('=' * 80)
+    print('=' * 80)
+    print('=' * 80)
+  print('=' * 80)
+  if time.time() > state['next_heartbeat']:
+    pprint(connection.krpc.get_status())
+    state['next_heartbeat'] = time.time() + 1
+  pprint(state['ut']())
+  time.sleep(1)
+  return state
 
 
 def h2v(pitch, yaw):
@@ -153,14 +171,15 @@ class GravityTurn(object):
     self.last = None
 
   def update(self):
-    if self.space_center.ut - self.mission_start > 2*60 + 53:
-      return SeparateToInsertionStage(self.connection, self.mission_start )
-    vec = self.transform_direction(self.ship.flight(self.surf_ref).prograde, self.surf_ref, self.ship_ref)
+    if self.space_center.ut - self.mission_start > 2 * 60 + 53:
+      return SeparateToInsertionStage(self.connection, self.mission_start)
+    vec = self.transform_direction(self.ship.flight(self.surf_ref).prograde,
+                                   self.surf_ref, self.ship_ref)
     self.last = align(self.ship, vec, last=self.last)
-    #self.space_center.clear_drawing()
+    # self.space_center.clear_drawing()
     self.space_center.draw_direction(vec, self.ship_ref, (1, 0, 0))
-    #self.control.pitch = float(self.last['steering'][0])
-    #self.control.yaw = float(self.last['steering'][1])
+    # self.control.pitch = float(self.last['steering'][0])
+    # self.control.yaw = float(self.last['steering'][1])
     return self
 
   def display(self):
@@ -180,8 +199,8 @@ class SeparateToInsertionStage(object):
     self.last = None
 
   def update(self):
-    if self.space_center.ut - self.mission_start > 2*60 + 53:
-      return self#InsertIntoOrbit(self.connection)
+    if self.space_center.ut - self.mission_start > 2 * 60 + 53:
+      return self  # InsertIntoOrbit(self.connection)
     vec = self.ship.flight().prograde
     self.last = align(self.ship, vec, last=self.last)
     self.control.pitch = float(self.last['steering'][0])
