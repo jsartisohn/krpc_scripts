@@ -3,10 +3,11 @@ import os
 import sys
 import threading
 import importlib
-#import mttkinter as tkinter
+# import mttkinter as tkinter
 from tkinter import ttk
 import tkinter.font
 
+import krpc
 
 KRCC_MODULE_DECLARATION = 'DECLARE_' + 'KRCC' + '_MODULE'
 krcc_modules = []
@@ -34,58 +35,119 @@ class KRCCModuleLoader:
     self._lock = threading.Lock()
     self._py_module = None
     self._module = None
-    self._module_name = None
+    self._module_name = tkinter.StringVar()
     self._module_thread = None
     self._shutdown = False
-    self._thread = threading.Thread(target=self._execute_module, name='_thread')
+    self._thread = threading.Thread(target=self._execute_module,
+                                    name='krcc_thread',
+                                    daemon=True)
     self._thread.start()
-    self._file_thread = threading.Thread(target=self._watch_file,
-                                         name='_file_thread')
-    self._file_thread.start()
+
+  def request_module(self, module_name: str):
+    self._module_name.set(module_name)
+
+  def _main(self, connection: krpc.Connection):
+    old_mtime = None
+    module_name = None
+    while True:
+      requested_module_name = self._module_name
+      if requested_module_name is None:
+        time.sleep(1)
+        continue
+      if requested_module_name == module_name:
+        mtime = os.stat(module_name + '.py').st_mtime
+        if old_mtime <= mtime:
+          self._py_module = importlib.reload(self._py_module)
+      else:
+        module_name = requested_module_name
+        if self._py_module is None:
+          self._py_module = importlib.import_module(module_name)
+          module_name = self._py_module.__name__.split('/')[-1]
+          old_mtime = os.stat(module_name + '.py').st_mtime
+      if not hasattr(self._py_module, 'execute'):
+        print('Invalid module "' + module_name + '".')
+        print('No "execute" function found.')
+        self._module_name = None
+        continue
+      self._py_module.execute(connection)
+
+  def _connect_to_krpc(self):
+    with krpc.connect(name="KRCC") as connection:
+      print('Connected to kRPC')
+      try:
+        self._main(connection)
+      finally:
+        print('Disconnected from kRPC')
 
   def _execute_module(self):
     error = None
     dots = 0
     while True:
       try:
-        self._lock.acquire()
-        if self._module_name is None and self._py_module is None:
-          continue
-        if self._py_module is None:
-          self._py_module = importlib.import_module(self._module_name)
-        else:
-          self._py_module = importlib.reload(self._py_module)
-          self._module_name = self._py_module.__name__.split('/')[-1]
-          self._module_name = self._module_name.split('.')[0]
-        self._module = self._py_module.load(self._root)
-        print('\nStarting thread with module: %s' % self._module.name)
-        self._module_thread = threading.Thread(target=self._module.run,
-                                               name='_module_thread')
-        self._module_thread.start()
-        error = None
-        self._lock.release()
-        self._module_thread.join()
-        self._lock.acquire()
-        print('\nModule %s finished executing.' % self._module.name)
-        if self._shutdown:
-          self._module_name = None
-          return
-      except Exception as e:
+        self._connect_to_krpc()
+      except krpc.error.NetworkError as e:
         if error != e.args[0]:
           error = e.args[0]
           print('\n')
           print(e)
-          self._module_name = None
-          sys.stdout.write('Retrying')
+          msg = 'Could not connect to kRPC. Retrying'
+          sys.stdout.write(msg)
+          dots = len(msg)
         if dots > 80:
           dots = 0
           sys.stdout.write('\n')
-        sys.stdout.write('.')
         dots += 1
+        sys.stdout.write('.')
         sys.stdout.flush()
         time.sleep(1)
-      finally:
-        self._lock.release()
+      #except KeyboardInterrupt:
+      #  print(e)
+      #  return
+      #except Exception as e:
+      #  print(e)
+      #  return
+
+
+#        self._lock.acquire()
+#        if self._module_name is None and self._py_module is None:
+#          continue
+#        if self._py_module is None:
+#          self._py_module = importlib.import_module(self._module_name)
+#        else:
+#          self._py_module = importlib.reload(self._py_module)
+#          self._module_name = self._py_module.__name__.split('/')[-1]
+#          self._module_name = self._module_name.split('.')[0]
+#        self._module = self._py_module.load(self._root)
+#        print('\nStarting thread with module: %s' % self._module.name)
+#        self._module_thread = threading.Thread(target=self._module.run,
+#                                               name='_module_thread')
+#        self._module_thread.start()
+#        error = None
+#        self._lock.release()
+#        self._module_thread.join()
+#        self._lock.acquire()
+#        print('\nModule %s finished executing.' % self._module.name)
+#        if self._shutdown:
+#          self._module_name = None
+#          return
+#    except Exception as e:
+#      print(e)
+#        if error != e.args[0]:
+#          error = e.args[0]
+#          print('\n')
+#          print(e)
+#          self._module_name = None
+#          sys.stdout.write('Retrying')
+#        if dots > 80:
+#          dots = 0
+#          sys.stdout.write('\n')
+#        sys.stdout.write('.')
+#        dots += 1
+#        sys.stdout.flush()
+#        time.sleep(1)
+#    finally:
+#      print("yolo")
+#        self._lock.release()
 
   def _watch_file(self):
     watched_file = None
@@ -149,7 +211,15 @@ class KRCCModuleLoader:
         return
       name = self._module_name
     self.stop_module()
-    #self.start_module(name)
+    # self.start_module(name)
+
+  def _open_mudule(self):
+    while True:
+      try:
+        pass
+      finally:
+        pass
+
 
 
 tk = tkinter.Tk()
@@ -186,20 +256,19 @@ combobox.bind('<<ComboboxSelected>>', on_combobox_changed)
 module_frame = ttk.Frame(tk)
 module_frame.pack(fill=tkinter.BOTH, expand=1)
 
-
 loader = KRCCModuleLoader(module_frame)
 loader.start_module(krcc_modules[0])
 button['command'] = loader.reload_module
 
 
-def on_shutdown():
-  loader.shutdown()
-  tk.quit()
+def check():
+  tk.after(100, check)
 
+tk.after(50, check)
 
-tk.protocol("WM_DELETE_WINDOW", on_shutdown)
 try:
   tk.mainloop()
 except KeyboardInterrupt:
-  loader.shutdown()
-print('Shutdown complete! Have a nice day.')
+  pass
+
+print('\nShutdown complete! Have a nice day.')
