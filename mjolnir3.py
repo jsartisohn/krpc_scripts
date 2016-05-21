@@ -1,33 +1,44 @@
 import logging
+import math
 import sys
 import time
 import traceback
+from pprint import pprint
 from tkinter import Listbox, LEFT, BOTH, StringVar
+
 import krpc
+import numpy as np
+
+import krcc
 from krcc_module import KRCCModule
 from mjolnir2 import align, rotation_matrix, mul, vdot
-import math
-import numpy as np
-from pprint import pprint
 
 
-def execute(state, connection: krpc.Connection):
-  if state is None:
-    state = {
-      'ut': connection.add_stream(getattr, connection.space_center, 'ut'),
-      'next_heartbeat': 0,
-    }
-    print('=' * 80)
-    print('=' * 80)
-    print('=' * 80)
-    print('=' * 80)
-    print('=' * 80)
-  print('=' * 80)
-  if time.time() > state['next_heartbeat']:
-    pprint(connection.krpc.get_status())
-    state['next_heartbeat'] = time.time() + 1
-  pprint(state['ut']())
-  time.sleep(1)
+def execute(state: krcc.State, connection: krpc.Connection):
+  try:
+    if state is None:
+      state = {
+        'ut': connection.add_stream(getattr, connection.space_center, 'ut'),
+        'current_game_scene': connection.add_stream(getattr, connection.krpc, 'current_game_scene'),
+        'next_heartbeat': 0,
+      }
+      print('=' * 80)
+      print('=' * 80)
+      print('=' * 80)
+      print('=' * 80)
+      print('=' * 80)
+    if time.time() > state['next_heartbeat']:
+      print('=' * 80)
+      print('%.2f yolo' % (time.time() % 1000))
+      if state['current_game_scene'] not in ['SpaceCenter']:
+        print(state['current_game_scene']())
+        print(state['next_heartbeat'])
+        print(time.time())
+      state['next_heartbeat'] = time.time() + 1
+      print('sploink')
+      pprint(state['ut']())
+  except krpc.error.RPCError as e:
+    print(e)
   return state
 
 

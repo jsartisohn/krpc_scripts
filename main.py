@@ -11,17 +11,20 @@ from watchdog.observers import Observer
 from watchdog.events import LoggingEventHandler, FileSystemEventHandler
 import krpc
 
+import krcc
+
 KRCC_MODULE_DECLARATION = 'DECLARE_' + 'KRCC' + '_MODULE'
 krcc_modules = []
-for dirpath, _, filenames in os.walk(os.getcwd()):
-  for filename in filenames:
-    if not filename.endswith('.py'):
-      continue
-    with open(os.path.join(dirpath, filename), 'r') as f:
-      for line in f.readlines():
-        if KRCC_MODULE_DECLARATION in line:
-          krcc_modules.append(filename[:-3])
-
+def load_krcc_modules():
+  for dirpath, _, filenames in os.walk(os.getcwd()):
+    for filename in filenames:
+      if not filename.endswith('.py'):
+        continue
+      with open(os.path.join(dirpath, filename), 'r') as f:
+        for line in f.readlines():
+          if KRCC_MODULE_DECLARATION in line:
+            krcc_modules.append(filename[:-3])
+load_krcc_modules()
 
 def on_combobox_changed(event):
   loader.start_module(combobox.get())
@@ -40,47 +43,90 @@ class KRCCModuleLoader(FileSystemEventHandler):
     self._module_name = tkinter.StringVar()
     self._module_thread = None
     self._shutdown = False
+    self._dirty = False
+    self._run = None
+    self._state = None
+    self._connection = None
     self._thread = threading.Thread(target=self._execute_module,
                                     name='krcc_thread',
                                     daemon=True)
     self._thread.start()
-    self._needs_reloading = False
 
   def on_modified(self, event):
     with self._lock:
       if event.src_path == './' + self._module_name + '.py':
         print('Reloading module "%s"...' % self._module_name)
-        if self._py_module is not None:
-          if self._py_module.__name__ == self._module_name:
-            importlib.reload(self._py_module)
-            self._needs_reloading = False
-          else:
+        try:
+          if self._py_module is None:
             self._py_module = importlib.import_module(self._module_name)
+          else:
+            importlib.reload(self._py_module)
+          self._dirty = False
+        except Exception:
+          self._print_trace_and_wait_for_refresh()
 
   def request_module(self, module_name: str):
-    self._module_name.set(module_name)
+    with self._lock:
+      self._module_name.set(module_name)
+
+  def _print_trace_and_wait_for_refresh(self):
+    sys.stdout.flush()
+    traceback.print_exc()
+    time.sleep(0.1)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    self._wait_for_reload()
+
+  def _wait_for_reload(self):
+    self._dirty = True
+    self._run = self._run_wait_for_reload
+    print('Waiting for change in %s.py...' % self._module_name, flush=True)
+    return True
+
+  def _run_wait_for_reload(self):
+    with self._lock:
+      if not self._dirty:
+        self._run = self._run_verify_module
+    return True
+
+  def _run_load_new_module(self):
+    self._py_module = importlib.import_module(self._module_name)
+    if self._py_module is None:
+      self._wait_for_reload()
+    else:
+      self._run = self._run_verify_module
+    return True
+
+  def _run_verify_module(self):
+    with open(self._module_name + '.py') as f:
+      #from pprint import pprint
+      #pprint(f.readlines())
+      if not any(line.startswith(krcc.Signature) for line in f.readlines()):
+        print('No function with signature %s in "%s"'
+              % (krcc.Signature, self._module_name))
+        self._wait_for_reload()
+        return True
+    self._run = self._run_module_file
+    return True
+
+  def _run_module_file(self):
+    self._state = self._py_module.execute(self._state, self._connection)
+    return True
 
   def _main(self, connection: krpc.Connection):
-    state = None
-    while True:
-      with self._lock:
-        if self._needs_reloading:
-          continue
-        if self._py_module is None or self._module_name is None:
-          continue
-        if 'execute' not in self._py_module.__dir__():
-          print('Invalid module "' + self._py_module.__name__ + '".')
-          print('No "execute" function found.')
-          self._module_name = None
-          continue
-        try:
-          state = self._py_module.execute(state, connection)
-        except Exception:
-          sys.stdout.flush()
-          sys.stderr.write(traceback.format_exc())
-          sys.stderr.flush()
-          self._needs_reloading = True
-      time.sleep(0.0001)
+    self._run = self._run_load_new_module
+    self._connection = connection
+    next_check = 0
+    while time.time() < next_check or connection.krpc.get_status() is not None:
+      if time.time() > next_check:
+        next_check = time.time() + 1
+      try:
+        if not self._run():
+          return False
+      except Exception:
+        self._print_trace_and_wait_for_refresh()
+    print('Lost kRPC connection.')
+    return True
 
   def _connect_to_krpc(self):
     with krpc.connect(name="KRCC") as connection:
@@ -89,14 +135,12 @@ class KRCCModuleLoader(FileSystemEventHandler):
       observer.start()
       print('Connected to kRPC')
       try:
-        self._py_module = importlib.import_module(self._module_name)
+        #self._py_module = importlib.import_module(self._module_name)
         self._main(connection)
       finally:
-        connection.close()
         observer.stop()
-        print('Disconnected from kRPC')
-        return False
       print('Disconnected from kRPC')
+      return False
 
   def _execute_module(self):
     error = None
