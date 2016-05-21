@@ -14,23 +14,41 @@ from krcc_module import KRCCModule
 from mjolnir2 import align, rotation_matrix, mul, vdot
 
 
+g = 9.81
+
+def is_pre_launch_situation(s, c):
+  return s in [
+    c.space_center.VesselSituation.pre_launch,
+    c.space_center.VesselSituation.landed,
+  ]
+
+
 def execute(state: krcc.State, connection: krpc.Connection):
   try:
     if state is None:
       state = {
         'current_game_scene': connection.add_stream(getattr, connection.krpc, 'current_game_scene'),
         'next_heartbeat': 0,
+        'streams': [],
+        'updated': False,
       }
     if time.time() > state['next_heartbeat']:
       state['next_heartbeat'] = time.time() + 2
-      print('=' * 80)
+      #print('=' * 80)
       if state['current_game_scene']() == connection.krpc.GameScene.flight:
         if 'flight' not in state:
           state['flight'] = {
-            'program': prepare_for_launch
+            'program': prepare_for_launch,
           }
+        elif state['updated']:
+          state['flight']['program'] = prepare_for_launch
+          for stream in state['streams']:
+            stream.remove()
+          state['streams'] = []
+          state['updated'] = False
         return state['flight']['program'](state, connection)
-      del state['flight']
+      if 'flight' in state:
+        del state['flight']
       print('Not in flight.')
       state['next_heartbeat'] = time.time() + 5
   except krpc.error.RPCError as e:
@@ -48,6 +66,13 @@ def prepare_for_launch(state: krcc.State, c: krpc.Connection):
   if vessel.name != 'PT4':
     return state
   vessel.control.throttle = 1
+  flight['engines'] = []
+  engines = flight['engines']
+  for engine in vessel.parts.engines:
+    if engine.part.title == 'LR89 Series':
+      stream = c.add_stream(getattr, engine, 'part')
+      state['streams'].append(stream)
+      engines.append(stream)
   flight['program'] = await_launch
   return state
 
@@ -55,22 +80,109 @@ def prepare_for_launch(state: krcc.State, c: krpc.Connection):
 def await_launch(state: krcc.State, c: krpc.Connection):
   flight = state['flight']
   vessel = flight['active_vessel']
-  if vessel.situation == vessel.VesselSituation.pre_launch:
-    return state
-
-  flight['program'] = check_engines_and_wait_for_min_thrust
+  if is_pre_launch_situation(vessel.situation, c):
+    percentages = []
+    for engine in flight['engines']:
+      e = engine().engine
+      if e is not None:
+        percentages.append(e.thrust / e.max_thrust)
+    if any(x > 0.01 for x in percentages):
+      state['next_heartbeat'] = 0
+      print(['%.3f' % x for x in percentages])
+    if all(x > 0.99 for x in percentages):
+      flight['program'] = check_twr_and_release_launch_clamps
   return state
 
 
-def check_engines_and_wait_for_min_thrust(state: krcc.State, c: krpc.Connection):
+def check_twr_and_release_launch_clamps(state: krcc.State, c: krpc.Connection):
   flight = state['flight']
   vessel = flight['active_vessel']
+  twr = vessel.thrust / (vessel.mass * g)
+  print('TWR: %s.5' % twr)
+  print(vessel.situation)
+  if twr > 1 and is_pre_launch_situation(vessel.situation, c):
+    vessel.control.activate_next_stage()
+    flight['program'] = open_loop_ascent
+    return state
+  if vessel.met > 5:
+    flight['program'] = disable_engines_and_abort_launch
+  return state
+
+def disable_engines_and_abort_launch(state: krcc.State, c: krpc.Connection):
+  flight = state['flight']
+  vessel = flight['active_vessel']
+  for engine in flight['engines']:
+      e = engine().engine
+      if e is not None:
+        e.active = False
+  vessel.control.throttle = 0
+  vessel.control.abort = True
+  flight['program'] = display_aborted_message
+  return state
+
+def display_aborted_message(state: krcc.State, c: krpc.Connection):
+  print('Launch aborted')
+  state['next_heartbeat'] = time.time() + 10
+  return state
+
+def open_loop_ascent(state: krcc.State, c: krpc.Connection):
+  flight = state['flight']
+  vessel = flight['active_vessel']
+  ap = vessel.auto_pilot
+  if 'open_loop_ascent' not in flight:
+    ap.reference_frame = vessel.surface_reference_frame
+    ap.engage()
+    ap.target_direction = (1,0,0)
+    flight['open_loop_ascent'] = {
+      'initial_twr': vessel.thrust / (vessel.mass * g),
+    }
+  ola = flight['open_loop_ascent']
+  fraction = max(0, min(1, (ola['initial_twr'] - 1.2) / (1.6 - 1.2)))
+  target_speed = 50 + 50 * fraction
+  print(vessel.flight(vessel.orbit.body.reference_frame).vertical_speed)
+  if vessel.flight(vessel.orbit.body.reference_frame).vertical_speed > target_speed:
+    del flight['open_loop_ascent']
+    return do_initial_pitchover(state, c, 2 + 3 * fraction)
+  return state
+
+def do_initial_pitchover(state: krcc.State, c: krpc.Connection, pitch=None):
+  flight = state['flight']
+  vessel = flight['active_vessel']
+  if pitch is not None:
+    flight['program'] = do_initial_pitchover
+    flight['initial_pitch'] = pitch
+    ap = vessel.auto_pilot
+    flight['initial_pitch_ap'] = ap
+    ap.reference_frame = vessel.surface_reference_frame
+    ap.engage()
+    ap.target_pitch_and_heading(90 - pitch, 90)
+  ap = flight['initial_pitch_ap']
+  print(ap.error)
+  if ap.error < 0.5:
+    ap.disengage()
+    del flight['initial_pitch_ap']
+    flight['initial_pitch'] = None
+    flight['program'] = follow_prograde
+  return state
+
+def follow_prograde(state: krcc.State, c: krpc.Connection):
+  flight = state['flight']
+  vessel = flight['active_vessel']
+  if 'follow_prograde_ap' not in flight:
+    flight['follow_prograde_ap'] = vessel.auto_pilot
+    flight['follow_prograde_ap'].reference_frame = vessel.surface_velocity_reference_frame
+    flight['follow_prograde_ap'].engage()
+    flight['follow_prograde_ap'].target_direction = (0,1,0)
+    #flight['follow_prograde_ap'].set_pid_parameters(ki=1.2)
+  if vessel.flight().surface_altitude > 20000:
+    flight['program'] = disable_engines_and_abort_launch
   return state
 
 def template(state: krcc.State, c: krpc.Connection):
   flight = state['flight']
   vessel = flight['active_vessel']
   return state
+
 
 
 def h2v(pitch, yaw):

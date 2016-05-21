@@ -61,6 +61,8 @@ class KRCCModuleLoader(FileSystemEventHandler):
             self._py_module = importlib.import_module(self._module_name)
           else:
             importlib.reload(self._py_module)
+          if self._state:
+            self._state['updated'] = True
           self._dirty = False
         except Exception:
           self._print_trace_and_wait_for_refresh()
@@ -75,6 +77,7 @@ class KRCCModuleLoader(FileSystemEventHandler):
     time.sleep(0.1)
     sys.stdout.flush()
     sys.stderr.flush()
+    self._state = None
     self._wait_for_reload()
 
   def _wait_for_reload(self):
@@ -99,8 +102,6 @@ class KRCCModuleLoader(FileSystemEventHandler):
 
   def _run_verify_module(self):
     with open(self._module_name + '.py') as f:
-      #from pprint import pprint
-      #pprint(f.readlines())
       if not any(line.startswith(krcc.Signature) for line in f.readlines()):
         print('No function with signature %s in "%s"'
               % (krcc.Signature, self._module_name))
