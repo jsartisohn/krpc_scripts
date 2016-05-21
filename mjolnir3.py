@@ -18,27 +18,58 @@ def execute(state: krcc.State, connection: krpc.Connection):
   try:
     if state is None:
       state = {
-        'ut': connection.add_stream(getattr, connection.space_center, 'ut'),
         'current_game_scene': connection.add_stream(getattr, connection.krpc, 'current_game_scene'),
         'next_heartbeat': 0,
       }
-      print('=' * 80)
-      print('=' * 80)
-      print('=' * 80)
-      print('=' * 80)
-      print('=' * 80)
     if time.time() > state['next_heartbeat']:
+      state['next_heartbeat'] = time.time() + 2
       print('=' * 80)
-      print('%.2f yolo' % (time.time() % 1000))
-      if state['current_game_scene'] not in ['SpaceCenter']:
-        print(state['current_game_scene']())
-        print(state['next_heartbeat'])
-        print(time.time())
-      state['next_heartbeat'] = time.time() + 1
-      print('sploink')
-      pprint(state['ut']())
+      if state['current_game_scene']() == connection.krpc.GameScene.flight:
+        if 'flight' not in state:
+          state['flight'] = {
+            'program': prepare_for_launch
+          }
+        return state['flight']['program'](state, connection)
+      del state['flight']
+      print('Not in flight.')
+      state['next_heartbeat'] = time.time() + 5
   except krpc.error.RPCError as e:
     print(e)
+  return state
+
+
+def prepare_for_launch(state: krcc.State, c: krpc.Connection):
+  if 'flight' not in state:
+    return state
+  flight = state['flight']
+  if 'active_vessel' not in flight:
+    flight['active_vessel'] = c.space_center.active_vessel
+  vessel = flight['active_vessel']
+  if vessel.name != 'PT4':
+    return state
+  vessel.control.throttle = 1
+  flight['program'] = await_launch
+  return state
+
+
+def await_launch(state: krcc.State, c: krpc.Connection):
+  flight = state['flight']
+  vessel = flight['active_vessel']
+  if vessel.situation == vessel.VesselSituation.pre_launch:
+    return state
+
+  flight['program'] = check_engines_and_wait_for_min_thrust
+  return state
+
+
+def check_engines_and_wait_for_min_thrust(state: krcc.State, c: krpc.Connection):
+  flight = state['flight']
+  vessel = flight['active_vessel']
+  return state
+
+def template(state: krcc.State, c: krpc.Connection):
+  flight = state['flight']
+  vessel = flight['active_vessel']
   return state
 
 
